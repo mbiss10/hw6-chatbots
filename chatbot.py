@@ -41,41 +41,23 @@ class Chatbot:
         Consider adding to this description any information about what your
         chatbot can do and how the user can interact with it.
         """
-        return """
-        Your task is to implement the chatbot as detailed in the HW6
-        instructions (README.md).
+        return "Hi! I'm [NAME NEEDED]! I help you find movies that you will like. \n To exit: write \":quit\" (or press Ctrl-C to force the exit)"
 
-        To exit: write ":quit" (or press Ctrl-C to force the exit)
-
-        TODO: Write the description for your own chatbot here in the `intro()` function.
-        """
 
     def greeting(self):
         """Return a message that the chatbot uses to greet the user."""
-        ########################################################################
-        # TODO: Write a short greeting message                                 #
-        ########################################################################
 
-        greeting_message = "How can I help you?"
+        greeting_message = "Hi! I'm [NAME NEEDED]! I'm going to recommend a movie to you. First I will ask you about your taste in movies. Tell me about a movie that you have seen."
 
-        ########################################################################
-        #                             END OF YOUR CODE                         #
-        ########################################################################
+        print("\n", self.titles)
         return greeting_message
 
     def goodbye(self):
         """
         Return a message that the chatbot uses to bid farewell to the user.
         """
-        ########################################################################
-        # TODO: Write a short farewell message                                 #
-        ########################################################################
 
-        goodbye_message = "Have a nice day!"
-
-        ########################################################################
-        #                          END OF YOUR CODE                            #
-        ########################################################################
+        goodbye_message = "Have a nice day! 👋"
         return goodbye_message
 
     def debug(self, line):
@@ -119,11 +101,42 @@ class Chatbot:
         # code in a modular fashion to make it easier to improve and debug.    #
         ########################################################################
 
-        response = "I (the chatbot) processed '{}'".format(line)
+        # these titles are raw strings
+        titles = self.extract_titles(line)
+        if not titles:
+            return "I'm sorry, was there a movie in your statement? Please include any movie titles in quotes."
+    
+        if len(titles) > 1:
+              print(f"Thanks for the info. Let's just focus on one movie at a time. I'll start with {titles[0]}")
+                
+        title = titles[0]
 
-        ########################################################################
-        #                          END OF YOUR CODE                            #
-        ########################################################################
+        indices = self.find_movies_idx_by_title(title)
+        if not indices:
+            # TODO: what if first of N movies is unrecognized?
+            return "I'm sorry, I don't recognize the movie '{title}'"
+        elif len(indices) > 1:
+            # disgambiguate
+            exact_titles = [self.titles[idx] for idx in indices]
+            user_clarification = input(f"Which movie did you mean: {' or '.join(exact_titles)}?")
+            self.disambiguate_candidates(user_clarification, indices)
+        else:
+            movie_idx = indices[0]
+
+        # predict sentiment
+        predicted_sentiment_rule_based = self.predict_sentiment_rule_based()
+        predicted_sentiment_statistical = self.predict_sentiment_statistical()
+
+        if predicted_sentiment_statistical == 0:
+            response = f"I'm sorry, I'm not quite sure if you liked '{title}'. Tell me more about what you thought about it."
+        elif predicted_sentiment_statistical == -1:
+            response = f"Ah, so you didn't like '{title}'. Yeah, that movie sucks. Tell me about another movie you have seen."
+        elif predicted_sentiment_statistical == 1:
+            response = f"Yeah, '{title}' is a dope movie. Tell me about another movie you have seen."
+        else:
+            print("AHHH what is that sentiment?!")
+            exit(1)
+
         return response
 
     def extract_titles(self, user_input: str) -> list:
@@ -159,13 +172,7 @@ class Chatbot:
         Hints: 
             - What regular expressions would be helpful here? 
         """
-        ########################################################################
-        #                          START OF YOUR CODE                          #
-        ########################################################################                                             
-        return [] # TODO: delete and replace this line
-        ########################################################################
-        #                          END OF YOUR CODE                            #
-        ########################################################################
+        return list(re.findall(r'[\'"](.*?)[\'"]', user_input))
 
     def find_movies_idx_by_title(self, title:str) -> list:
         """ Given a movie title, return a list of indices of matching movies
@@ -200,13 +207,27 @@ class Chatbot:
             - Our solution only takes about 7 lines. If you're using much more than that try to think 
               of a more concise approach 
         """
-        ########################################################################
-        #                          START OF YOUR CODE                          #
-        ########################################################################                                                 
-        return [] # TODO: delete and replace this line
-        ########################################################################
-        #                          END OF YOUR CODE                            #
-        ########################################################################
+        res = []
+        
+        if title.lower()[:4] == "the ":
+            title_no_the = title[4:]
+            query = rf"(The )?{title_no_the}(, The)?"
+        else:
+            query = rf"{title}"
+        
+        if re.search(r'.* \(\d{4}\)', title, flags=re.IGNORECASE) is None:
+            query += r'.* \(\d{4}\)$'    
+        else: 
+            query = re.escape(query)
+        
+        print("QUERY:")
+        print(query)
+
+        for (idx, (candidate, _)) in enumerate(self.titles):
+            if re.search(query, candidate, flags=re.IGNORECASE) is not None:
+                res.append(idx)
+
+        return res
 
 
     def disambiguate_candidates(self, clarification:str, candidates:list) -> list: 
