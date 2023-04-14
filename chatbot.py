@@ -48,8 +48,6 @@ class Chatbot:
         """Return a message that the chatbot uses to greet the user."""
 
         greeting_message = "Hi! I'm [NAME NEEDED]! I'm going to recommend a movie to you. First I will ask you about your taste in movies. Tell me about a movie that you have seen."
-
-        print("\n", self.titles)
         return greeting_message
 
     def goodbye(self):
@@ -71,6 +69,12 @@ class Chatbot:
     ############################################################################
     # 2. Extracting and transforming                                           #
     ############################################################################
+
+    # Returns year from a movie title, or None if no year is found
+    # Assumes year is in parentheses at end of string
+    def get_year_from_title(self, title: str) -> str:
+        res = re.match(r'.* \((\d{4})\)$', title)
+        return res[1] if res is not None else None
 
     def process(self, line: str) -> str:
         """Process a line of input from the REPL and generate a response.
@@ -115,24 +119,31 @@ class Chatbot:
         if not indices:
             # TODO: what if first of N movies is unrecognized?
             return "I'm sorry, I don't recognize the movie '{title}'"
-        elif len(indices) > 1:
+    
+        while len(indices) != 1:
             # disgambiguate
-            exact_titles = [self.titles[idx] for idx in indices]
-            user_clarification = input(f"Which movie did you mean: {' or '.join(exact_titles)}?")
-            self.disambiguate_candidates(user_clarification, indices)
-        else:
-            movie_idx = indices[0]
+            exact_titles = [self.titles[idx][0] for idx in indices]
+            user_clarification = input(f"Which movie did you mean: {' or '.join(exact_titles)}?\n")
+
+            disambiguation = self.disambiguate_candidates(user_clarification, indices)
+
+            if len(disambiguation) > 0:
+                # If the disambiguation fails, it will return an empty list. We just retry with the full set of indices
+                indices = disambiguation
+        
+        movie_idx = indices[0]
+        exact_title = self.titles[movie_idx][0]
 
         # predict sentiment
-        predicted_sentiment_rule_based = self.predict_sentiment_rule_based()
-        predicted_sentiment_statistical = self.predict_sentiment_statistical()
+        predicted_sentiment_rule_based = 1 # self.predict_sentiment_rule_based()
+        predicted_sentiment_statistical = 1 # self.predict_sentiment_statistical()
 
         if predicted_sentiment_statistical == 0:
-            response = f"I'm sorry, I'm not quite sure if you liked '{title}'. Tell me more about what you thought about it."
+            response = f"I'm sorry, I'm not quite sure if you liked '{movie_idx}'. Tell me more about what you thought about it."
         elif predicted_sentiment_statistical == -1:
-            response = f"Ah, so you didn't like '{title}'. Yeah, that movie sucks. Tell me about another movie you have seen."
+            response = f"Ah, so you didn't like '{movie_idx}'. Yeah, that movie sucks. Tell me about another movie you have seen."
         elif predicted_sentiment_statistical == 1:
-            response = f"Yeah, '{title}' is a dope movie. Tell me about another movie you have seen."
+            response = f"Yeah, '{movie_idx}' is a dope movie. Tell me about another movie you have seen."
         else:
             print("AHHH what is that sentiment?!")
             exit(1)
@@ -214,14 +225,14 @@ class Chatbot:
             query = rf"(The )?{title_no_the}(, The)?"
         else:
             query = rf"{title}"
-        
-        if re.search(r'.* \(\d{4}\)', title, flags=re.IGNORECASE) is None:
+
+        if self.get_year_from_title(title) is None:
             query += r'.* \(\d{4}\)$'    
         else: 
             query = re.escape(query)
         
-        print("QUERY:")
-        print(query)
+        # print("QUERY:")
+        # print(query)
 
         for (idx, (candidate, _)) in enumerate(self.titles):
             if re.search(query, candidate, flags=re.IGNORECASE) is not None:
@@ -265,7 +276,7 @@ class Chatbot:
                  or "Three Colors: Blue (Trois couleurs: Bleu) (1993)" 
                  or "Three Colors: White (Trzy kolory: Bialy) (1994)"?'
               user> "1994"
-              movieboth> 'I'm sorry, I still don't understand.
+              moviebot> 'I'm sorry, I still don't understand.
                             Did you mean "Three Colors: Red (Trois couleurs: Rouge) (1994)" or
                             "Three Colors: White (Trzy kolory: Bialy) (1994)" '
     
@@ -281,13 +292,24 @@ class Chatbot:
             - You might find one or more of the following helpful: 
               re.search, re.findall, re.match, re.escape, re.compile
         """
-        ########################################################################
-        #                          START OF YOUR CODE                          #
-        ########################################################################                                                 
-        return [] # TODO: delete and replace this line
-        ########################################################################
-        #                          END OF YOUR CODE                            #
-        ########################################################################
+        candidate_titles = [self.titles[idx][0] for idx in candidates]
+
+        # If user clarifies using an exact match
+        for idx, candidate_title in enumerate(candidate_titles):
+            if candidate_title in clarification:
+                return [candidates[idx]]
+
+        # If user only specifies a year
+        clarified_year = re.match(r'(\d{4})', clarification)
+        if clarified_year is None:
+            print("I'm sorry, I still don't understand.", end=' ')
+            return []
+
+        # Get year from the match object
+        clarified_year = clarified_year[1]
+
+        candidate_years = [self.get_year_from_title(candidate) for candidate in candidate_titles]
+        return [candidates[idx] for idx, year in enumerate(candidate_years) if year == clarified_year]
 
     ############################################################################
     # 3. Sentiment                                                             #
