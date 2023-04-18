@@ -8,6 +8,7 @@ from sklearn import linear_model
 import nltk 
 from collections import defaultdict, Counter
 from typing import List, Dict, Union, Tuple
+import random
 
 import util
 
@@ -15,8 +16,7 @@ class Chatbot:
     """Class that implements the chatbot for HW 6."""
 
     def __init__(self):
-        # The chatbot's default name is `moviebot`.
-        self.name = 'moviebot' # TODO: Give your chatbot a new name.
+        self.name = 'I-Am-Deebee' # other options: Query Tarantino, Martin (F-Score)sese
 
         # This matrix has the following shape: num_movies x num_users
         # The values stored in each row i and column j is the rating for
@@ -30,6 +30,17 @@ class Chatbot:
         self.train_logreg_sentiment_classifier()
 
         # TODO: put any other class variables you need here 
+        self.positive_responses = [
+            ("Yeah, ", " is such a dope movie!"),
+            ("Nice, I also like ", "."),
+            ("Ooh good call, ", " is great!"),
+        ]
+
+        self.current_titles = []
+        self.is_disambiguating = False
+
+        self.positive_movies = []
+        self.negative_movies = []
 
     ############################################################################
     # 1. WARM UP REPL                                                          #
@@ -41,13 +52,13 @@ class Chatbot:
         Consider adding to this description any information about what your
         chatbot can do and how the user can interact with it.
         """
-        return "Hi! I'm [NAME NEEDED]! I help you find movies that you will like. \n To exit: write \":quit\" (or press Ctrl-C to force the exit)"
+        return f"Hey there! Get ready to meet {self.name}, a robot that will help you find movies you'll love. \nTo exit, type \":quit\" (or press Ctrl-C to force the exit)\n"
 
 
     def greeting(self):
         """Return a message that the chatbot uses to greet the user."""
 
-        greeting_message = "Hi! I'm [NAME NEEDED]! I'm going to recommend a movie to you. First I will ask you about your taste in movies. Tell me about a movie that you have seen."
+        greeting_message = f"What's up, I'm {self.name}! Let's find you a great movie. First, I need to get a sense for your taste. Tell me about a movie you've seen."
         return greeting_message
 
     def goodbye(self):
@@ -55,7 +66,7 @@ class Chatbot:
         Return a message that the chatbot uses to bid farewell to the user.
         """
 
-        goodbye_message = "Have a nice day! 👋"
+        goodbye_message = "Oh, guess we're done here. Hope you found a movie you'll like. Cya! 👋"
         return goodbye_message
 
     def debug(self, line):
@@ -75,6 +86,10 @@ class Chatbot:
     def get_year_from_title(self, title: str) -> str:
         res = re.match(r'.* \((\d{4})\)$', title)
         return res[1] if res is not None else None
+
+    def get_positive_response(self, title):
+        prefix, suffix = random.choice(self.positive_responses)
+        return prefix + title + suffix
 
     def process(self, line: str) -> str:
         """Process a line of input from the REPL and generate a response.
@@ -105,21 +120,24 @@ class Chatbot:
         # code in a modular fashion to make it easier to improve and debug.    #
         ########################################################################
 
+        response = ""
+
         # these titles are raw strings
         titles = self.extract_titles(line)
         if not titles:
-            return "I'm sorry, was there a movie in your statement? Please include any movie titles in quotes."
+            return "I'm sorry, did you mention a movie in your last message? Please include any movie titles in quotes."
     
+        # TODO -- is this okay?
         if len(titles) > 1:
-              print(f"Thanks for the info. Let's just focus on one movie at a time. I'll start with {titles[0]}")
-                
+              response += f"Thanks for the info! Let's just focus on one movie at a time. I'll start with {titles[0]}."
+    
         title = titles[0]
 
         indices = self.find_movies_idx_by_title(title)
         if not indices:
             # TODO: what if first of N movies is unrecognized?
             return "I'm sorry, I don't recognize the movie '{title}'"
-    
+
         while len(indices) != 1:
             # disgambiguate
             exact_titles = [self.titles[idx][0] for idx in indices]
@@ -127,10 +145,12 @@ class Chatbot:
 
             disambiguation = self.disambiguate_candidates(user_clarification, indices)
 
-            if len(disambiguation) > 0:
-                # If the disambiguation fails, it will return an empty list. We just retry with the full set of indices
-                indices = disambiguation
-        
+            if len(indices) == len(disambiguation) or len(disambiguation) == 0:
+                # Either the user did not narrow down the set of candidates at all, or disambiguation failed.
+                return "Hmm, I'm having trouble understanding that response. Let's try this again from the top. Tell me about a movie you've seen, and try to be specific about the title!"
+
+            indices = disambiguation
+
         movie_idx = indices[0]
         exact_title = self.titles[movie_idx][0]
 
@@ -139,11 +159,11 @@ class Chatbot:
         predicted_sentiment_statistical = 1 # self.predict_sentiment_statistical()
 
         if predicted_sentiment_statistical == 0:
-            response = f"I'm sorry, I'm not quite sure if you liked '{movie_idx}'. Tell me more about what you thought about it."
+            response += f"I'm sorry, I'm not quite sure if you liked '{exact_title}'. Tell me more about what you thought about it."
         elif predicted_sentiment_statistical == -1:
-            response = f"Ah, so you didn't like '{movie_idx}'. Yeah, that movie sucks. Tell me about another movie you have seen."
+            response += f"Ah, so you didn't like '{exact_title}'. Yeah, that movie sucks. Tell me about another movie you have seen."
         elif predicted_sentiment_statistical == 1:
-            response = f"Yeah, '{movie_idx}' is a dope movie. Tell me about another movie you have seen."
+            response += self.get_positive_response(exact_title)
         else:
             print("AHHH what is that sentiment?!")
             exit(1)
@@ -183,7 +203,7 @@ class Chatbot:
         Hints: 
             - What regular expressions would be helpful here? 
         """
-        return list(re.findall(r'[\'"](.*?)[\'"]', user_input))
+        return list(re.findall(r'[\"](.*?)[\"]', user_input))
 
     def find_movies_idx_by_title(self, title:str) -> list:
         """ Given a movie title, return a list of indices of matching movies
@@ -219,20 +239,17 @@ class Chatbot:
               of a more concise approach 
         """
         res = []
-        
+
         if title.lower()[:4] == "the ":
             title_no_the = title[4:]
-            query = rf"(The )?{title_no_the}(, The)?"
+            query = f"(The )?{title_no_the}(, The)?"
         else:
-            query = rf"{title}"
+            query = f"{title}"
 
         if self.get_year_from_title(title) is None:
             query += r'.* \(\d{4}\)$'    
         else: 
             query = re.escape(query)
-        
-        # print("QUERY:")
-        # print(query)
 
         for (idx, (candidate, _)) in enumerate(self.titles):
             if re.search(query, candidate, flags=re.IGNORECASE) is not None:
@@ -302,7 +319,7 @@ class Chatbot:
         # If user only specifies a year
         clarified_year = re.match(r'(\d{4})', clarification)
         if clarified_year is None:
-            print("I'm sorry, I still don't understand.", end=' ')
+            # print("I'm sorry, I still don't understand.", end=' ')
             return []
 
         # Get year from the match object
