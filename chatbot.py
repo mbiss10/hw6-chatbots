@@ -9,8 +9,24 @@ import nltk
 from collections import defaultdict, Counter
 from typing import List, Dict, Union, Tuple
 import random
-
+from enum import Enum
 import util
+
+
+class BotState(Enum):
+    ACCEPTING_NEW = 1
+    DISAMBIGUATING = 2
+    CLARIFYING_SENTIMENT = 3
+    RECCOMENDING = 4
+
+
+class Movie:
+    def __init__(self, full_title, idx):
+        self.full_title = full_title
+        self.idx = idx
+        self.year = Chatbot.get_year_from_title(full_title)
+        self.title_no_year = full_title[:-7]
+
 
 class Chatbot:
     """Class that implements the chatbot for HW 6."""
@@ -36,11 +52,24 @@ class Chatbot:
             ("Ooh good call, ", " is great!"),
         ]
 
-        self.current_titles = []
+        self.negative_responses = [
+            ("Got it, so you did not like ", "."),
+            ("Good to know that you didn't like ", "."),
+            ("Right, makes sense that you didn't like ", "... that movie it terrible!"),
+        ]
+
+        # bot state
+        self.curr_processing_raw_title = None
+        self.curr_processing_idx = None
+        self.curr_processing_indices = None
+        self.curr_processing_sentiment = None
         self.is_disambiguating = False
 
-        self.positive_movies = []
-        self.negative_movies = []
+        # results so far as lists of Movie objects
+        self.num_preferences_found = 0
+        self.positive_user_movies = []
+        self.negative_user_movies = []
+
 
     ############################################################################
     # 1. WARM UP REPL                                                          #
@@ -58,7 +87,7 @@ class Chatbot:
     def greeting(self):
         """Return a message that the chatbot uses to greet the user."""
 
-        greeting_message = f"What's up, I'm {self.name}! Let's find you a great movie. First, I need to get a sense for your taste. Tell me about a movie you've seen."
+        greeting_message = f"What's up, {self.name} here! Let's find you a great movie. First, I need to get a sense for your taste. Tell me about a movie you've seen."
         return greeting_message
 
     def goodbye(self):
@@ -81,15 +110,26 @@ class Chatbot:
     # 2. Extracting and transforming                                           #
     ############################################################################
 
-    # Returns year from a movie title, or None if no year is found
-    # Assumes year is in parentheses at end of string
-    def get_year_from_title(self, title: str) -> str:
+    # Static method. Returns year from a movie title, or None if no year is found.
+    # Assumes year is in parentheses at end of string.
+    def get_year_from_title(title: str) -> str:
         res = re.match(r'.* \((\d{4})\)$', title)
         return res[1] if res is not None else None
 
-    def get_positive_response(self, title):
-        prefix, suffix = random.choice(self.positive_responses)
+    def get_response(self, sentiment, title):
+        if sentiment.lower() == "negative":
+            prefix, suffix = random.choice(self.negative_responses)
+        else: 
+            prefix, suffix = random.choice(self.positive_responses)
+
         return prefix + title + suffix
+
+    def reset_state(self):
+        self.curr_processing_raw_title = None
+        self.curr_processing_indices = None
+        self.curr_processing_sentiment = None
+        self.curr_processing_idx = None
+        self.is_disambiguating = False
 
     def process(self, line: str) -> str:
         """Process a line of input from the REPL and generate a response.
@@ -120,55 +160,133 @@ class Chatbot:
         # code in a modular fashion to make it easier to improve and debug.    #
         ########################################################################
 
+        # GET title
+        # GET indices
+        # GET sentiment (possibly includes clarification)
+        # Disambiguate movies (could be multiple loops)
+        # Are we ready to reccomend?
+
         response = ""
 
-        # these titles are raw strings
-        titles = self.extract_titles(line)
-        if not titles:
-            return "I'm sorry, did you mention a movie in your last message? Please include any movie titles in quotes."
-    
-        # TODO -- is this okay?
-        if len(titles) > 1:
-              response += f"Thanks for the info! Let's just focus on one movie at a time. I'll start with {titles[0]}."
-    
-        title = titles[0]
+        if self.num_preferences_found >= 5:
+            pass
 
-        indices = self.find_movies_idx_by_title(title)
-        if not indices:
-            # TODO: what if first of N movies is unrecognized?
-            return "I'm sorry, I don't recognize the movie '{title}'"
+        if self.curr_processing_raw_title is None:
+            # extract titles
+            titles = self.extract_titles(line)
+            
+            # did not find any titles... complain
+            if not titles:
+                return "I'm sorry, did you mention a movie in your last message? Please include any movie titles in quotes."
 
-        while len(indices) != 1:
-            # disgambiguate
+            # handle multiple titles. For now, just use the first one
+            if len(titles) > 1:
+                response += f"Thanks for the info! Let's just focus on one movie at a time. I'll start with {titles[0]}.\n"
+            
+            title = titles[0]
+            self.curr_processing_raw_title = titles[0]
+
+        if self.curr_processing_indices is None:
+            # get indicies for movies
+            indices = self.find_movies_idx_by_title(title)
             exact_titles = [self.titles[idx][0] for idx in indices]
-            user_clarification = input(f"Which movie did you mean: {' or '.join(exact_titles)}?\n")
+            self.curr_processing_indices = indices
+        
+            # Chatbot does not know about the movie... complain
+            if not indices:
+                self.reset_state()
+                return f"I'm sorry, I don't recognize the movie '{title}'."
 
-            disambiguation = self.disambiguate_candidates(user_clarification, indices)
+        if self.curr_processing_sentiment is None:
+            # Get/clarify sentiment
+            # predicted_sentiment_rule_based = self.predict_sentiment_rule_based(line)
+            predicted_sentiment_statistical = self.predict_sentiment_statistical(line)
+            chosen_sentiment_score = predicted_sentiment_statistical
 
-            if len(indices) == len(disambiguation) or len(disambiguation) == 0:
-                # Either the user did not narrow down the set of candidates at all, or disambiguation failed.
-                return "Hmm, I'm having trouble understanding that response. Let's try this again from the top. Tell me about a movie you've seen, and try to be specific about the title!"
+            self.curr_processing_sentiment = chosen_sentiment_score
+            
+            if chosen_sentiment_score == -1 and len(self.curr_processing_indices) == 1: 
+                self.reset_state()
+                self.negative_user_movies.append(indices[0])
+                response += self.get_response("negative", title)
+                return response
+                
+            elif chosen_sentiment_score == 1 and len(self.curr_processing_indices) == 1: 
+                self.reset_state()
+                self.positive_user_movies.append(indices[0])
+                response += self.get_response("positive", title)
+                return response
 
-            indices = disambiguation
+            elif chosen_sentiment_score == 0:
+                # Important: we still don't know if we've disambiguated titles
+                response += f"I'm sorry, I'm not quite sure if you liked '{title}'. Tell me more about what you thought about it."
+                return response
 
-        movie_idx = indices[0]
-        exact_title = self.titles[movie_idx][0]
+        if self.curr_processing_sentiment == 0: 
+            # predicted_sentiment_rule_based = self.predict_sentiment_rule_based(line)
+            predicted_sentiment_statistical = self.predict_sentiment_statistical(line)
+            chosen_sentiment_score = predicted_sentiment_statistical
+        
+            self.curr_processing_sentiment = chosen_sentiment_score
+            
+            if chosen_sentiment_score == -1 and len(self.curr_processing_indices) == 1: 
+                self.negative_user_movies.append(self.curr_processing_indices[0])
+                response += self.get_response("negative", self.curr_processing_raw_title)
+                self.reset_state()
+                return response
+                
+            elif chosen_sentiment_score == 1 and len(self.curr_processing_indices) == 1: 
+                self.positive_user_movies.append(self.curr_processing_indices[0])
+                response += self.get_response("positive", self.curr_processing_raw_title)
+                self.reset_state()
+                return response
 
-        # predict sentiment
-        predicted_sentiment_rule_based = 1 # self.predict_sentiment_rule_based()
-        predicted_sentiment_statistical = 1 # self.predict_sentiment_statistical()
+            elif chosen_sentiment_score == 0: # sentiment = 0
+                response += f"I'm sorry, I'm still not quite sure if you liked '{title}'. Tell me more about what you thought about it."
+                return response
+            
 
-        if predicted_sentiment_statistical == 0:
-            response += f"I'm sorry, I'm not quite sure if you liked '{exact_title}'. Tell me more about what you thought about it."
-        elif predicted_sentiment_statistical == -1:
-            response += f"Ah, so you didn't like '{exact_title}'. Yeah, that movie sucks. Tell me about another movie you have seen."
-        elif predicted_sentiment_statistical == 1:
-            response += self.get_positive_response(exact_title)
-        else:
-            print("AHHH what is that sentiment?!")
-            exit(1)
+        if self.curr_processing_idx is None:
+            if len(self.curr_processing_indices) == 1:
+                self.is_disambiguating = False
+                self.curr_processing_idx = self.curr_processing_indices[0]
 
-        return response
+            elif self.is_disambiguating:
+                # keep disambiguating
+                disambiguation = self.disambiguate_candidates(line, self.curr_processing_indices)
+
+                if len(self.curr_processing_indices) == len(disambiguation) or len(disambiguation) == 0:
+                    # Either the user did not narrow down the set of candidates at all, or disambiguation failed.
+                    self.reset_state()
+                    return "Hmm, I'm having trouble understanding that response. Let's try this again from the top. Tell me about a movie you've seen, and try to be specific about the title!"
+
+                elif len(disambiguation) == 1:
+                    self.curr_processing_idx = disambiguation[0]
+                    self.is_disambiguating = False
+                
+                else:
+                    exact_titles = [self.titles[idx][0] for idx in self.curr_processing_indices] # TODO: clean this up
+                    return f"I still don't know which movie you meant: {' or '.join(exact_titles)}?\n"
+
+            elif not self.is_disambiguating:
+                # start disambiguating
+                self.is_disambiguating = True
+                exact_titles = [self.titles[idx][0] for idx in self.curr_processing_indices] # TODO: clean this up
+                return f"I understand that you {'liked' if self.curr_processing_sentiment == 1 else 'disliked'} {self.curr_processing_raw_title}. There are multiple movies with that name. Which did you mean: {' or '.join(exact_titles)}?\n"
+
+
+        if chosen_sentiment_score == -1: 
+            self.reset_state()
+            self.negative_user_movies.append(indices[0])
+            response += self.get_response("negative", title)
+            return response
+                
+        elif chosen_sentiment_score == 1: 
+            self.reset_state()
+            self.positive_user_movies.append(indices[0])
+            response += self.get_response("positive", title)
+            return response
+
 
     def extract_titles(self, user_input: str) -> list:
         """Extract potential movie titles from the user input.
@@ -246,7 +364,7 @@ class Chatbot:
         else:
             query = f"{title}"
 
-        if self.get_year_from_title(title) is None:
+        if Chatbot.get_year_from_title(title) is None:
             query += r'.* \(\d{4}\)$'    
         else: 
             query = re.escape(query)
@@ -309,24 +427,10 @@ class Chatbot:
             - You might find one or more of the following helpful: 
               re.search, re.findall, re.match, re.escape, re.compile
         """
-        candidate_titles = [self.titles[idx][0] for idx in candidates]
-
-        # If user clarifies using an exact match
-        for idx, candidate_title in enumerate(candidate_titles):
-            if candidate_title in clarification:
-                return [candidates[idx]]
-
-        # If user only specifies a year
-        clarified_year = re.match(r'(\d{4})', clarification)
-        if clarified_year is None:
-            # print("I'm sorry, I still don't understand.", end=' ')
-            return []
-
-        # Get year from the match object
-        clarified_year = clarified_year[1]
-
-        candidate_years = [self.get_year_from_title(candidate) for candidate in candidate_titles]
-        return [candidates[idx] for idx, year in enumerate(candidate_years) if year == clarified_year]
+        
+        candidate_titles = [(self.titles[idx][0], idx) for idx in candidates]
+        filtered_candidates = [idx for title, idx in candidate_titles if re.search(re.escape(clarification), title, flags=re.IGNORECASE) is not None]
+        return filtered_candidates
 
     ############################################################################
     # 3. Sentiment                                                             #
@@ -360,13 +464,15 @@ class Chatbot:
             - Take a look at self.sentiment (e.g. in scratch.ipynb)
             - Remember we want the count of *tokens* not *types*
         """
-        ########################################################################
-        #                          START OF YOUR CODE                          #
-        ########################################################################                                                  
-        return 0 # TODO: delete and replace this line
-        ########################################################################
-        #                          END OF YOUR CODE                            #
-        ########################################################################
+        user_input = user_input.lower()
+
+        tokens = nltk.regexp_tokenize(user_input, r"\w+")
+
+        sentiments = Counter([self.sentiment[token] for token in tokens if token in self.sentiment])
+        score = sentiments["pos"] - sentiments["neg"]
+
+        return 1 if score > 0 else (-1 if score < 0 else 0)
+        
 
     def train_logreg_sentiment_classifier(self):
         """
@@ -390,18 +496,23 @@ class Chatbot:
         #load training data  
         texts, y = util.load_rotten_tomatoes_dataset()
 
-        self.model = None #variable name that will eventually be the sklearn Logistic Regression classifier you train 
-        self.count_vectorizer = None #variable name will eventually be the CountVectorizer from sklearn 
-
-        ########################################################################
-        #                          START OF YOUR CODE                          #
-        ########################################################################                                                
+        vectorizer = CountVectorizer(min_df=20, #only look at words that occur in at least 20 docs
+                                    stop_words='english', # remove english stop words
+                                    max_features=1000, #only select the top 1000 features 
+                                    )
         
-        pass # TODO: delete and replace this line
+        texts = [s.lower() for s in texts]
+        X = vectorizer.fit_transform(texts)
 
-        ########################################################################
-        #                          END OF YOUR CODE                            #
-        ########################################################################
+        Y = np.array([1 if label.lower() == "fresh" else -1 for label in y])
+    
+        logistic_regression_classifier = sklearn.linear_model.LogisticRegression(penalty=None,  max_iter=500)
+        logistic_regression_classifier.fit(X, Y, )
+
+        # print("Model acc: ", logistic_regression_classifier.score(X, Y))
+
+        self.model = logistic_regression_classifier #variable name that will eventually be the sklearn Logistic Regression classifier you train 
+        self.count_vectorizer = vectorizer #variable name will eventually be the CountVectorizer from sklearn 
 
 
     def predict_sentiment_statistical(self, user_input: str) -> int: 
@@ -433,13 +544,13 @@ class Chatbot:
             - Be sure to lower-case the user input 
             - Don't forget about a case for the 0 class! 
         """
-        ########################################################################
-        #                          START OF YOUR CODE                          #
-        ########################################################################                                             
-        return 0 # TODO: delete and replace this line
-        ########################################################################
-        #                          END OF YOUR CODE                            #
-        ########################################################################
+        # print("HERE: ", self.count_vectorizer)
+        x = self.count_vectorizer.transform([user_input])
+
+        if np.sum(x) == 0:
+            return 0
+
+        return self.model.predict(x)[0]
 
 
     ############################################################################
