@@ -45,30 +45,33 @@ class Chatbot:
         # Train the classifier
         self.train_logreg_sentiment_classifier()
 
-        # TODO: put any other class variables you need here 
+        # Possible choices for responses to a user's positive/negative movie preferences
         self.positive_responses = [
             ("Yeah, ", " is such a dope movie!"),
             ("Nice, I also like ", "."),
             ("Ooh good call, ", " is great!"),
         ]
-
         self.negative_responses = [
             ("Got it, so you did not like ", "."),
             ("Good to know that you didn't like ", "."),
             ("Right, makes sense that you didn't like ", "... that movie it terrible!"),
         ]
 
-        # bot state
-        self.curr_processing_raw_title = None
-        self.curr_processing_idx = None
-        self.curr_processing_indices = None
-        self.curr_processing_sentiment = None
-        self.is_disambiguating = False
+        # Bot state for each turn of conversation
+        self.curr_processing_raw_title = None  # raw title is what the user entered
+        self.curr_processing_idx = None  # single movie index for the user's current response
+        self.curr_processing_indices = None  # all possible movie indices for the user's current response
+        self.curr_processing_sentiment = None  # inferred sentiment for the user's current response
+        self.is_disambiguating = False  # whether the bot is currently trying to disambiguate user's response
 
-        # results so far as lists of Movie objects
+        # user preferences learned so far, as a dict mapping movie indices -> integer scores (+/-1)
         self.user_reviews = dict()
 
+        # list of reccomendations being given out by the bot
         self.reccomendations = None
+
+        self.articles = ["A", "An", "The"]
+        self.titles_articles_handled = self.init_titles_articles_handled()
 
 
     ############################################################################
@@ -116,7 +119,23 @@ class Chatbot:
         res = re.match(r'.* \((\d{4})\)$', title)
         return res[1] if res is not None else None
 
+    def get_response(self, sentiment, title, is_fifth=False):
+        if sentiment.lower() == "negative":
+            prefix, suffix = random.choice(self.negative_responses)
+        else: 
+            prefix, suffix = random.choice(self.positive_responses)
+
+        res = prefix + title + suffix
+
+        if is_fifth:
+            res += "\nI've sucked up enough of your data to train my internal neural network superintelligence transformer recurrent convolutional system. Are you ready to hear my reccomendation? (If not, answer ':quit' to end our conversation.)"
+
+        return res
+
     def reset_state(self):
+        """
+        Resets all of the bot's state variables for a new turn of the conversation.
+        """
         self.curr_processing_raw_title = None
         self.curr_processing_indices = None
         self.curr_processing_sentiment = None
@@ -151,12 +170,6 @@ class Chatbot:
         # directly based on how modular it is, we highly recommended writing   #
         # code in a modular fashion to make it easier to improve and debug.    #
         ########################################################################
-
-        # GET title
-        # GET indices
-        # GET sentiment (possibly includes clarification)
-        # Disambiguate movies (could be multiple loops)
-        # Are we ready to reccomend?
 
         response = ""
 
@@ -196,6 +209,10 @@ class Chatbot:
             if not indices:
                 self.reset_state()
                 return f"I'm sorry, I don't recognize the movie '{title}'."
+            
+            if len(self.curr_processing_indices) == 1 and self.curr_processing_indices[0] in self.user_reviews:
+                self.reset_state()
+                return "You've already told me about that movie!"
 
         if self.curr_processing_sentiment is None:
             # Get/clarify sentiment
@@ -248,6 +265,10 @@ class Chatbot:
 
         if self.curr_processing_idx is None:
             if len(self.curr_processing_indices) == 1:
+                if self.curr_processing_indices[0] in self.user_reviews:
+                    self.reset_state()
+                    return "You've already told me about that movie!"
+
                 self.is_disambiguating = False
                 self.curr_processing_idx = self.curr_processing_indices[0]
 
@@ -260,7 +281,7 @@ class Chatbot:
                     self.reset_state()
                     return "Hmm, I'm having trouble understanding that response. Let's try this again from the top. Tell me about a movie you've seen, and try to be specific about the title!"
 
-                elif len(disambiguation) == 1:
+                elif len(disambiguation) == 1:    
                     self.curr_processing_idx = disambiguation[0]
                     self.is_disambiguating = False
                 
@@ -274,6 +295,9 @@ class Chatbot:
                 exact_titles = [self.titles[idx][0] for idx in self.curr_processing_indices] # TODO: clean this up
                 return f"I understand that you {'liked' if self.curr_processing_sentiment == 1 else 'disliked'} {self.curr_processing_raw_title}. There are multiple movies with that name. Which did you mean: {' or '.join(exact_titles)}?\n"
 
+        if self.curr_processing_idx in self.user_reviews:
+            self.reset_state()
+            return "You've already told me about that movie!"
 
         if self.curr_processing_sentiment == -1: 
             self.user_reviews[self.curr_processing_idx] = -1
@@ -356,24 +380,26 @@ class Chatbot:
             - Our solution only takes about 7 lines. If you're using much more than that try to think 
               of a more concise approach 
         """
-        res = []
+        res = set()
 
-        if title.lower()[:4] == "the ":
-            title_no_the = title[4:]
-            query = f"(The )?{title_no_the}(, The)?"
-        else:
-            query = f"{title}"
+        pattern = title
 
         if Chatbot.get_year_from_title(title) is None:
-            query += r'.* \(\d{4}\)$'    
+            pattern += r'.* \(\d{4}\)$'    
         else: 
-            query = re.escape(query)
+            pattern = re.escape(pattern)
+
+        pattern_obj = re.compile(pattern, flags=re.IGNORECASE)
 
         for (idx, (candidate, _)) in enumerate(self.titles):
-            if re.search(query, candidate, flags=re.IGNORECASE) is not None:
-                res.append(idx)
+            if pattern_obj.search(candidate) is not None:
+                res.add(idx)
+        
+        for (idx, candidate) in self.titles_articles_handled:
+            if pattern_obj.search(candidate) is not None:
+                res.add(idx)
 
-        return res
+        return list(res)
 
 
     def disambiguate_candidates(self, clarification:str, candidates:list) -> list: 
@@ -599,12 +625,33 @@ class Chatbot:
     # 5. Open-ended                                                            #
     ############################################################################
 
-    def function1_process_title_articles():
+    def init_titles_articles_handled(self):
         """
         TODO: delete and replace with your function.
         Be sure to put an adequate description in this docstring.  
         """
-        pass
+        # Bothersome Man, The (Brysomme mannen, Den) (2006)
+        # does it have: 
+        # , {article} ( 
+        # or
+        # , {article} ) (
+        # if so, for each instance create an "or"
+
+        # pattern = r"(.*), (A|An|Un|The|Der|L'|Une|Les|Los|Il|Las|Det|Le|Das|El|De|En|Lo|Den|La)( \(|\))"
+
+        pattern = rf"(.*), ({'|'.join(self.articles)}) (\(.*)"
+        pattern_obj = re.compile(pattern, flags=re.IGNORECASE)
+    
+        res = []
+        for idx, movie in enumerate(self.titles):
+            title = movie[0]
+            instances = pattern_obj.findall(title)
+            if instances:
+                first = instances[0]
+                res.append((idx, first[1] + " " + first[0] + " " + first[2]))
+        
+        return res
+
 
     def function2_lemmatize_and_mask_title():
         """
