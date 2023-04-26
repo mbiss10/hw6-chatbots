@@ -19,7 +19,14 @@ distinguish the chatbot responses from those of a human?
 
 Q1_your_answer = """
 
-Delete and put your answer here
+Yes 
+
+- We attribute humnan level CAPABILITIES (ability to reason) and VALUES (fairness, bias, etc. -- reccomend horror movie to kid)
+  to the chatbot and it has neither
+
+- Like OpenAI, prefix with disclaimer "I am an AI..."
+- Avoid answering certain things (e.g. harm classification)
+- Build guardrails e.g. checking user's age before making reccs 
 
 """
 
@@ -35,7 +42,19 @@ Can you think of ways that designers of the chatbot can help to mitigate this ri
 
 Q2_your_answer = """
 
-Delete and put your answer here
+- We store movie preferences transiently but make sure to clear it out between interactions
+- We don't collect user info so even leaks wouldn't be traced back to specific people 
+
+- We don't fine tune or do extra training with user preferences 
+
+- There is maybe info in the movie ratings? E.g. differential privacy -- if only one person has 
+  ever seen a movie, then you know the rating for that movie came from that person 
+
+- ENCRYPT
+- store model on local devices (train in federated way)
+- just don't store data long term
+- have users opt in if you're training on their data 
+- collect minimal data
 
 """
 
@@ -53,7 +72,10 @@ citizens -- should do in anticipation of these risks and/or in response to these
 
 Q3_your_answer = """
 
-Delete and put your answer here
+- Retraining programs
+- UBI -- if AI truly increases productivity expontentially, there should be plenty of resources to go around for everyone 
+- Learn to understand the systems to avoid issues like in Q1. Broad education about these systems solves a lot of problems
+
 
 """
 
@@ -67,6 +89,10 @@ compared to an end-to-end deep learning approach, e.g. ChatGPT?
 
 Q4_your_answer = """
 
-Delete and put your answer here
+- Closed domain (movies only) 
+- Complex to build -- and very little can be ported over to new domains
+- Brittle rule based dialogue framework
+- Worse performance (just not as generalizable)
+- Required domain specific labeled data (as opposed to webscale free text)
 
 """
