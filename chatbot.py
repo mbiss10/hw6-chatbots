@@ -116,19 +116,6 @@ class Chatbot:
         res = re.match(r'.* \((\d{4})\)$', title)
         return res[1] if res is not None else None
 
-    def get_response(self, sentiment, title, is_fifth=False):
-        if sentiment.lower() == "negative":
-            prefix, suffix = random.choice(self.negative_responses)
-        else: 
-            prefix, suffix = random.choice(self.positive_responses)
-
-        res = prefix + title + suffix
-
-        if is_fifth:
-            res += "\nI've sucked up enough of your data to train my internal neural network superintelligence transformer recurrent convolutional system. Are you ready to hear my reccomendation? (If not, answer ':quit' to end our conversation.)"
-
-        return res
-
     def reset_state(self):
         self.curr_processing_raw_title = None
         self.curr_processing_indices = None
@@ -563,7 +550,6 @@ class Chatbot:
         if np.sum(x) == 0:
             return 0
         
-        print("STAT PRED: ", self.model.predict(x)[0])
         return self.model.predict(x)[0]
 
 
@@ -601,31 +587,29 @@ class Chatbot:
             to make sure you know what this function is doing. 
         """ 
         num_movies = self.ratings.shape[0]
-
-        ratings_matrix = util.binarize(self.ratings)
     
         user_rating_all_movies = np.zeros(num_movies)
         for movie_idx, user_review in user_ratings.items():
             user_rating_all_movies[movie_idx] = user_review
 
-        recs = util.recommend(user_rating_all_movies, ratings_matrix, num_return = num_return)
+        recs = util.recommend(user_rating_all_movies, self.ratings, num_return = num_return)
         return [self.titles[rec_idx][0] for rec_idx in recs]
 
     ############################################################################
     # 5. Open-ended                                                            #
     ############################################################################
 
-    def function1():
+    def function1_process_title_articles():
         """
         TODO: delete and replace with your function.
         Be sure to put an adequate description in this docstring.  
         """
         pass
 
-    def function2():
+    def function2_lemmatize_and_mask_title():
         """
-        TODO: delete and replace with your function.
-        Be sure to put an adequate description in this docstring.  
+        TODO: document
+        When computing sentiment, use the output from this function instead of the raw text
         """
         pass  
 
