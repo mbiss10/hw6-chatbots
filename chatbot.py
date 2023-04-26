@@ -66,9 +66,9 @@ class Chatbot:
         self.is_disambiguating = False
 
         # results so far as lists of Movie objects
-        self.num_preferences_found = 0
-        self.positive_user_movies = []
-        self.negative_user_movies = []
+        self.user_reviews = dict()
+
+        self.reccomendations = None
 
 
     ############################################################################
@@ -116,13 +116,18 @@ class Chatbot:
         res = re.match(r'.* \((\d{4})\)$', title)
         return res[1] if res is not None else None
 
-    def get_response(self, sentiment, title):
+    def get_response(self, sentiment, title, is_fifth=False):
         if sentiment.lower() == "negative":
             prefix, suffix = random.choice(self.negative_responses)
         else: 
             prefix, suffix = random.choice(self.positive_responses)
 
-        return prefix + title + suffix
+        res = prefix + title + suffix
+
+        if is_fifth:
+            res += "\nI've sucked up enough of your data to train my internal neural network superintelligence transformer recurrent convolutional system. Are you ready to hear my reccomendation? (If not, answer ':quit' to end our conversation.)"
+
+        return res
 
     def reset_state(self):
         self.curr_processing_raw_title = None
@@ -168,8 +173,16 @@ class Chatbot:
 
         response = ""
 
-        if self.num_preferences_found >= 5:
-            pass
+        if len(self.user_reviews) >= 5:
+            if self.reccomendations is None:
+                # get reccomendations for the first time
+                self.reccomendations = self.recommend_movies(self.user_reviews, num_return=10)
+            
+            if len(self.reccomendations) == 0:
+                # we've given out all recs
+                return "That's all the reccomendations I've got for now! You should quit now using :quit."
+
+            return f"I reccomend... {self.reccomendations.pop(0)}. \n Do you want another reccomendation? If not, end our conversation by typing :quit."
 
         if self.curr_processing_raw_title is None:
             # extract titles
@@ -207,14 +220,14 @@ class Chatbot:
             
             if chosen_sentiment_score == -1 and len(self.curr_processing_indices) == 1: 
                 self.reset_state()
-                self.negative_user_movies.append(indices[0])
-                response += self.get_response("negative", title)
+                self.user_reviews[indices[0]] = -1
+                response += self.get_response("negative", title, is_fifth = len(self.user_reviews) >= 5)
                 return response
                 
             elif chosen_sentiment_score == 1 and len(self.curr_processing_indices) == 1: 
                 self.reset_state()
-                self.positive_user_movies.append(indices[0])
-                response += self.get_response("positive", title)
+                self.user_reviews[indices[0]] = 1
+                response += self.get_response("positive", title, is_fifth = len(self.user_reviews) >= 5)
                 return response
 
             elif chosen_sentiment_score == 0:
@@ -230,14 +243,14 @@ class Chatbot:
             self.curr_processing_sentiment = chosen_sentiment_score
             
             if chosen_sentiment_score == -1 and len(self.curr_processing_indices) == 1: 
-                self.negative_user_movies.append(self.curr_processing_indices[0])
-                response += self.get_response("negative", self.curr_processing_raw_title)
+                self.user_reviews[self.curr_processing_indices[0]] = -1
+                response += self.get_response("negative", self.curr_processing_raw_title, is_fifth = len(self.user_reviews) >= 5)
                 self.reset_state()
                 return response
                 
             elif chosen_sentiment_score == 1 and len(self.curr_processing_indices) == 1: 
-                self.positive_user_movies.append(self.curr_processing_indices[0])
-                response += self.get_response("positive", self.curr_processing_raw_title)
+                self.user_reviews[self.curr_processing_indices[0]] = 1
+                response += self.get_response("positive", self.curr_processing_raw_title, is_fifth = len(self.user_reviews) >= 5)
                 self.reset_state()
                 return response
 
@@ -275,16 +288,16 @@ class Chatbot:
                 return f"I understand that you {'liked' if self.curr_processing_sentiment == 1 else 'disliked'} {self.curr_processing_raw_title}. There are multiple movies with that name. Which did you mean: {' or '.join(exact_titles)}?\n"
 
 
-        if chosen_sentiment_score == -1: 
+        if self.curr_processing_sentiment == -1: 
+            self.user_reviews[self.curr_processing_idx] = -1
+            response += self.get_response("negative", self.titles[self.curr_processing_idx][0], is_fifth = len(self.user_reviews) >= 5)
             self.reset_state()
-            self.negative_user_movies.append(indices[0])
-            response += self.get_response("negative", title)
             return response
                 
-        elif chosen_sentiment_score == 1: 
+        elif self.curr_processing_sentiment == 1: 
+            self.user_reviews[self.curr_processing_idx] = 1
+            response += self.get_response("positive", self.titles[self.curr_processing_idx][0], is_fifth = len(self.user_reviews) >= 5)
             self.reset_state()
-            self.positive_user_movies.append(indices[0])
-            response += self.get_response("positive", title)
             return response
 
 
@@ -549,7 +562,8 @@ class Chatbot:
 
         if np.sum(x) == 0:
             return 0
-
+        
+        print("STAT PRED: ", self.model.predict(x)[0])
         return self.model.predict(x)[0]
 
 
@@ -586,14 +600,16 @@ class Chatbot:
             - It may be helpful to play around with util.recommend() in scratch.ipynb
             to make sure you know what this function is doing. 
         """ 
-        ########################################################################
-        #                          START OF YOUR CODE                          #
-        ########################################################################                                                    
-        return [""]  # TODO: delete and replace this line
-        ########################################################################
-        #                          END OF YOUR CODE                            #
-        ########################################################################
+        num_movies = self.ratings.shape[0]
 
+        ratings_matrix = util.binarize(self.ratings)
+    
+        user_rating_all_movies = np.zeros(num_movies)
+        for movie_idx, user_review in user_ratings.items():
+            user_rating_all_movies[movie_idx] = user_review
+
+        recs = util.recommend(user_rating_all_movies, ratings_matrix, num_return = num_return)
+        return [self.titles[rec_idx][0] for rec_idx in recs]
 
     ############################################################################
     # 5. Open-ended                                                            #
