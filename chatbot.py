@@ -57,6 +57,8 @@ class Chatbot:
             ("Right, makes sense that you didn't like ", "... that movie it terrible!"),
         ]
 
+        self.TAGS_TO_POS_MAP = {'VERB':'v', 'NOUN':'n', 'PRON':'n' , 'ADJ':'a', 'ADV':'r'}
+
         # Bot state for each turn of conversation
         self.curr_processing_raw_title = None  # raw title is what the user entered
         self.curr_processing_idx = None  # single movie index for the user's current response
@@ -67,11 +69,16 @@ class Chatbot:
         # user preferences learned so far, as a dict mapping movie indices -> integer scores (+/-1)
         self.user_reviews = dict()
 
+        self.use_lemmatizer = None
+
         # list of reccomendations being given out by the bot
-        self.reccomendations = None
+        self.reccomendations = False
 
         self.articles = ["A", "An", "The"]
         self.titles_articles_handled = self.init_titles_articles_handled()
+
+        nltk.data.path.append('./deps/nltk_data/')
+        self.lemmatizer = nltk.stem.WordNetLemmatizer()
 
 
     ############################################################################
@@ -90,7 +97,7 @@ class Chatbot:
     def greeting(self):
         """Return a message that the chatbot uses to greet the user."""
 
-        greeting_message = f"What's up, {self.name} here! Let's find you a great movie. First, I need to get a sense for your taste. Tell me about a movie you've seen."
+        greeting_message = f"What's up, {self.name} here! Let's find you a great movie. First, I need to get a sense for your taste. Before we begin, we have an expiremental lemmatizer that could improve our performance. If you would like to use it, respond 'yes' at any time. If you would like to disable it, respond 'no' at any time. You can also leave it disabled by telling us about a movie you have seen."
         return greeting_message
 
     def goodbye(self):
@@ -173,6 +180,14 @@ class Chatbot:
 
         response = ""
 
+        if line.lower().strip() == 'yes':
+            self.use_lemmatizer = True
+            return "Okay! We will use the lemmatizer. Tell us about a movie you have seen."
+        
+        elif line.lower().strip() == 'no':
+            self.use_lemmatizer = True
+            return "Okay! We will won't use the lemmatizer. Tell us about a movie you have seen."
+
         if len(self.user_reviews) >= 5:
             if self.reccomendations is None:
                 # get reccomendations for the first time
@@ -216,9 +231,10 @@ class Chatbot:
 
         if self.curr_processing_sentiment is None:
             # Get/clarify sentiment
-            # predicted_sentiment_rule_based = self.predict_sentiment_rule_based(line)
-            predicted_sentiment_statistical = self.predict_sentiment_statistical(line)
-            chosen_sentiment_score = predicted_sentiment_statistical
+            processed_line = self.lemmatize_and_mask_title(line) if self.use_lemmatizer else line
+            predicted_sentiment_statistical = self.predict_sentiment_statistical(processed_line)
+            predicted_sentiment_rule_based = self.predict_sentiment_rule_based(processed_line)
+            chosen_sentiment_score = predicted_sentiment_rule_based
 
             self.curr_processing_sentiment = chosen_sentiment_score
             
@@ -240,9 +256,11 @@ class Chatbot:
                 return response
 
         if self.curr_processing_sentiment == 0: 
-            # predicted_sentiment_rule_based = self.predict_sentiment_rule_based(line)
-            predicted_sentiment_statistical = self.predict_sentiment_statistical(line)
-            chosen_sentiment_score = predicted_sentiment_statistical
+            
+            processed_line = self.lemmatize_and_mask_title(line) if self.use_lemmatizer else line
+            predicted_sentiment_statistical = self.predict_sentiment_statistical(processed_line)
+            predicted_sentiment_rule_based = self.predict_sentiment_rule_based(processed_line)
+            chosen_sentiment_score = predicted_sentiment_rule_based
         
             self.curr_processing_sentiment = chosen_sentiment_score
             
@@ -259,7 +277,7 @@ class Chatbot:
                 return response
 
             elif chosen_sentiment_score == 0: # sentiment = 0
-                response += f"I'm sorry, I'm still not quite sure if you liked '{title}'. Tell me more about what you thought about it."
+                response += f"I'm sorry, I'm still not quite sure if you liked '{self.curr_processing_raw_title}'. Tell me more about what you thought about it."
                 return response
             
 
@@ -653,12 +671,48 @@ class Chatbot:
         return res
 
 
-    def function2_lemmatize_and_mask_title():
+    def lemmatize_and_mask_title(self, line : str) -> str:
         """
-        TODO: document
-        When computing sentiment, use the output from this function instead of the raw text
+        The second extension function. It takes as input the user line
+        and performs two prepocessing steps. First, it masks out any 
+        movie titles in the input string. Then, it converts each token 
+        in the string into its lemma. This helps with sentiment analysis.
+
+        For example, given the input string 'I disliked "Good Will Hunting" 
+        and hated "Lord of the Rings"', return 'I dislike I hate'.
         """
-        pass  
+        # First, we mask out any title from the input string
+        non_title_chars = []
+        i = 0
+        
+        while i < len(line):
+            if line[i] == "\"":
+                # We encountered a quote and thus a movie title
+                i += 1
+                # Iterate unitl we find the corresponding close quote
+                while i < len(line) and line[i] != "\"":
+                    i += 1
+
+            else:
+                non_title_chars.append(line[i])
+
+            i += 1
+
+        line_no_titles = "".join(non_title_chars)
+
+        #Split the masked string on whitespace
+        tokens = nltk.regexp_tokenize(line_no_titles, r"\w+")
+
+        #Tag each token with its part of speech
+        tagged_tokens = nltk.tag.pos_tag(tokens, tagset='universal', lang='eng')
+
+        # Use the tagged part of speech and the lemmatizer to lemmatize a given token
+        lemmas = [self.lemmatizer.lemmatize(token, pos = (self.TAGS_TO_POS_MAP[pos] if pos in self.TAGS_TO_POS_MAP else 'n')) for token, pos in tagged_tokens]
+
+        return " ".join(lemmas)
+
+        # Now, we split as we do in the get_sentiment methods
+
 
     def function3(): 
         """
