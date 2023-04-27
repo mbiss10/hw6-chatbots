@@ -111,9 +111,14 @@ citizens -- should do in anticipation of these risks and/or in response to these
 
 Q3_your_answer = """
 
-- Retraining programs
-- UBI -- if AI truly increases productivity expontentially, there should be plenty of resources to go around for everyone 
-- Learn to understand the systems to avoid issues like in Q1. Broad education about these systems solves a lot of problems
+Throughout history, with each innovation has come the concern of a loss of jobs. Dialog systems, and the
+technologies that they are based upon, are no different. There are two outlooks on this perspective. On the 
+one hand, if these systems are taking jobs they would likely also open up different opportunities. However,
+if these new jobs are not created, we have a couple of options for elected officials to consider. One, government
+sponsoreed retraining programs would help retrain employees who were displaced by these systems. This would help
+mitigate the impact of dialog systems on workers who could be replaced by them. Additionally, if AI truly 
+increases productivity expontentially, there should be plenty of resources to go around for everyone, which 
+would allow for the creation of universal basic income. 
 
 
 """
@@ -128,10 +133,14 @@ compared to an end-to-end deep learning approach, e.g. ChatGPT?
 
 Q4_your_answer = """
 
-- Closed domain (movies only) 
-- Complex to build -- and very little can be ported over to new domains
-- Brittle rule based dialogue framework
-- Worse performance (just not as generalizable)
-- Required domain specific labeled data (as opposed to webscale free text)
+Overall, this was an interesting project and a chance for us to solve a simplified real-world task.
+The advantages of this paradigm seem to be few compared to the disadvantages; however, there are 
+still some. For one, in the grand scheme of things, this was relatively easy to implement (as 
+compared to something like ChatGPT). Additionally, it is pretty interpretable and easy enough
+to understand why each interaction happens. For the disadvantages, we spend all of this time
+building our chatbot and it still can only work for movie reccomendations. This also required
+labelled datasets, which are time consuming to create anc durate. Additionally, with all
+of this work, very little can be ported over to a new domain. Finally, the performance here 
+is not as generalizable and and the implementation leads to a brittle dialog system.
 
 """
