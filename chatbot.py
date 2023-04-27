@@ -54,10 +54,10 @@ class Chatbot:
         # user preferences learned so far, as a dict mapping movie indices -> integer scores (+/-1)
         self.user_reviews = dict()
 
-        self.use_lemmatizer = None
+        self.use_lemmatizer = False
 
         # list of reccomendations being given out by the bot
-        self.reccomendations = False
+        self.reccomendations = None
 
         self.articles = ["A", "An", "The"]
         self.titles_articles_handled = self.init_titles_articles_handled()
