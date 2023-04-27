@@ -182,7 +182,7 @@ class Chatbot:
                 # we've given out all recs
                 return "That's all the reccomendations I've got for now! You should quit now using :quit."
 
-            return f"I reccomend... {self.reccomendations.pop(0)}. \n Do you want another reccomendation? If not, end our conversation by typing :quit."
+            return f"I reccomend... {self.reccomendations.pop(0)}. \n Do you want another reccomendation? Type anything to receive another, or end our conversation by typing :quit."
 
         if self.curr_processing_raw_title is None:
             # extract titles
