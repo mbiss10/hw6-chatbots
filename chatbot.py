@@ -13,21 +13,6 @@ from enum import Enum
 import util
 
 
-class BotState(Enum):
-    ACCEPTING_NEW = 1
-    DISAMBIGUATING = 2
-    CLARIFYING_SENTIMENT = 3
-    RECCOMENDING = 4
-
-
-class Movie:
-    def __init__(self, full_title, idx):
-        self.full_title = full_title
-        self.idx = idx
-        self.year = Chatbot.get_year_from_title(full_title)
-        self.title_no_year = full_title[:-7]
-
-
 class Chatbot:
     """Class that implements the chatbot for HW 6."""
 
@@ -570,7 +555,6 @@ class Chatbot:
             - Be sure to lower-case the user input 
             - Don't forget about a case for the 0 class! 
         """
-        # print("HERE: ", self.count_vectorizer)
         x = self.count_vectorizer.transform([user_input])
 
         if np.sum(x) == 0:
@@ -627,16 +611,35 @@ class Chatbot:
 
     def init_titles_articles_handled(self):
         """
-        TODO: delete and replace with your function.
-        Be sure to put an adequate description in this docstring.  
-        """
-        # Bothersome Man, The (Brysomme mannen, Den) (2006)
-        # does it have: 
-        # , {article} ( 
-        # or
-        # , {article} ) (
-        # if so, for each instance create an "or"
+        Code for option 5 of the open-ended function1 part of this assignment for
+        dealing with articles in movie titles. This method is called during the
+        chatbot's initialization. It parses all titles in the movies.txt file
+        and returns a list of tuples of the form (idx, processed_title) for 
+        all movies that have articles in their title. The processed title has
+        the article moved to the front of the title, to create a more natural
+        name. 
 
+        The articles that are supported are "A", "An", and "The". Note: one
+        limitation of this that we are aware of is that some titles have non-
+        English titles that also include articles, but we are not handling
+        these cases right now. We checked all possible articles that appear
+        at the end of a title following a comma and included these in the 
+        file data/parsed_article_candidates.txt. This allowed us to confirm
+        that A, An, and The should be sufficient for all English titles.
+        
+        For example:
+        "American in Paris, An" => "An American in Paris"
+        "Bothersome Man, The (Brysomme mannen, Den)" => "The Bothersome Man (Brysomme mannen, Den)"
+
+
+        When trying to extract movie IDs that match a user's text entry, we 
+        can iterate through both title lists to see if there are any matches
+        in either format. In other words, a user is allowed to type either
+        "American in Paris, An" OR "An American in Paris" and we'll know what
+        they're talking about.
+        """
+        # Limitation: doesn't support non-English articles. This is a pattern with extra
+        # articles we would support if we had more time.
         # pattern = r"(.*), (A|An|Un|The|Der|L'|Une|Les|Los|Il|Las|Det|Le|Das|El|De|En|Lo|Den|La)( \(|\))"
 
         pattern = rf"(.*), ({'|'.join(self.articles)}) (\(.*)"
