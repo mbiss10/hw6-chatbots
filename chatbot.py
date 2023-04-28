@@ -165,11 +165,13 @@ class Chatbot:
 
         response = ""
 
-        if line.lower().strip() == 'yes':
+        # if the user enters 'yes' and we are not reccomending, then we toggle the lemmatizer on
+        if line.lower().strip() == 'yes' and len(self.user_reviews) < 5:
             self.use_lemmatizer = True
             return "Okay! We will use the lemmatizer. Tell us about a movie you have seen."
         
-        elif line.lower().strip() == 'no':
+        # if the user enters 'no' and we are reccomending, then we toggle the lemmatizer off
+        elif line.lower().strip() == 'no' and len(self.user_reviews) < 5:
             self.use_lemmatizer = True
             return "Okay! We will won't use the lemmatizer. Tell us about a movie you have seen."
 
