@@ -9,7 +9,6 @@ import nltk
 from collections import defaultdict, Counter
 from typing import List, Dict, Union, Tuple
 import random
-from enum import Enum
 import util
 
 
@@ -59,9 +58,11 @@ class Chatbot:
         # list of reccomendations being given out by the bot
         self.reccomendations = None
 
+        # Used in extension function for parsing articles in titles
         self.articles = ["A", "An", "The"]
         self.titles_articles_handled = self.init_titles_articles_handled()
 
+        # Used in extension function for lemmatization
         nltk.data.path.append('./deps/nltk_data/')
         self.lemmatizer = nltk.stem.WordNetLemmatizer()
 
@@ -111,6 +112,9 @@ class Chatbot:
         res = re.match(r'.* \((\d{4})\)$', title)
         return res[1] if res is not None else None
 
+    # Given a user's sentiment about a certain title, returns a response confirming
+    # the chatbot's understanding of the user's preference. If this is the fifth
+    # preference the bot has received, it offers to make a reccomendation.
     def get_response(self, sentiment, title, is_fifth=False):
         if sentiment.lower() == "negative":
             prefix, suffix = random.choice(self.negative_responses)
@@ -156,12 +160,9 @@ class Chatbot:
         
         Returns: a string containing the chatbot's response to the user input
         """
-        ########################################################################
-        # TODO: Implement the extraction and transformation in this method,    #
-        # possibly calling other functions. Although your code is not graded   #
-        # directly based on how modular it is, we highly recommended writing   #
-        # code in a modular fashion to make it easier to improve and debug.    #
-        ########################################################################
+        # NOTE: we would have liked to make our code in this function more modular, but it was tricky
+        # to do so given that we had to return a response string from this function (and not from a
+        # helper function).
 
         response = ""
 
@@ -175,6 +176,7 @@ class Chatbot:
             self.use_lemmatizer = True
             return "Okay! We will won't use the lemmatizer. Tell us about a movie you have seen."
 
+        # see if we're ready to start reccomending
         if len(self.user_reviews) >= 5:
             if self.reccomendations is None:
                 # get reccomendations for the first time
@@ -186,6 +188,7 @@ class Chatbot:
 
             return f"I reccomend... {self.reccomendations.pop(0)}. \n Do you want another reccomendation? Type anything to receive another, or end our conversation by typing :quit."
 
+        # get a title from the user's entry
         if self.curr_processing_raw_title is None:
             # extract titles
             titles = self.extract_titles(line)
@@ -201,6 +204,7 @@ class Chatbot:
             title = titles[0]
             self.curr_processing_raw_title = titles[0]
 
+        # find indices corresponding to the user's title
         if self.curr_processing_indices is None:
             # get indicies for movies
             indices = self.find_movies_idx_by_title(title)
@@ -216,32 +220,40 @@ class Chatbot:
                 self.reset_state()
                 return "You've already told me about that movie!"
 
+        # infer the user's sentiment about this movie
         if self.curr_processing_sentiment is None:
             # Get/clarify sentiment
             processed_line = self.lemmatize_and_mask_title(line) if self.use_lemmatizer else line
             predicted_sentiment_statistical = self.predict_sentiment_statistical(processed_line)
             predicted_sentiment_rule_based = self.predict_sentiment_rule_based(processed_line)
+
+            # choose to use rule-based sentiment because we included extension code that works for this method.
+            # rule-based sentiment analysis is also more interpretable and simpler
             chosen_sentiment_score = predicted_sentiment_rule_based
 
             self.curr_processing_sentiment = chosen_sentiment_score
             
+            # handle negative sentiment
             if chosen_sentiment_score == -1 and len(self.curr_processing_indices) == 1: 
                 self.reset_state()
                 self.user_reviews[indices[0]] = -1
                 response += self.get_response("negative", title, is_fifth = len(self.user_reviews) >= 5)
                 return response
                 
+            # handle positive sentiment
             elif chosen_sentiment_score == 1 and len(self.curr_processing_indices) == 1: 
                 self.reset_state()
                 self.user_reviews[indices[0]] = 1
                 response += self.get_response("positive", title, is_fifth = len(self.user_reviews) >= 5)
                 return response
 
+            # handle ambiguous sentiment
             elif chosen_sentiment_score == 0:
                 # Important: we still don't know if we've disambiguated titles
                 response += f"I'm sorry, I'm not quite sure if you liked '{title}'. Tell me more about what you thought about it."
                 return response
 
+        # handle ambiguous sentiment if we still haven't received clarification from the user
         if self.curr_processing_sentiment == 0: 
             
             processed_line = self.lemmatize_and_mask_title(line) if self.use_lemmatizer else line
@@ -263,11 +275,11 @@ class Chatbot:
                 self.reset_state()
                 return response
 
-            elif chosen_sentiment_score == 0: # sentiment = 0
+            elif chosen_sentiment_score == 0:
                 response += f"I'm sorry, I'm still not quite sure if you liked '{self.curr_processing_raw_title}'. Tell me more about what you thought about it."
                 return response
             
-
+        # handle disambiguation of the specific movie the user is talking about
         if self.curr_processing_idx is None:
             if len(self.curr_processing_indices) == 1:
                 if self.curr_processing_indices[0] in self.user_reviews:
@@ -300,16 +312,19 @@ class Chatbot:
                 exact_titles = [self.titles[idx][0] for idx in self.curr_processing_indices] # TODO: clean this up
                 return f"I understand that you {'liked' if self.curr_processing_sentiment == 1 else 'disliked'} {self.curr_processing_raw_title}. There are multiple movies with that name. Which did you mean: {' or '.join(exact_titles)}?\n"
 
+        # avoid storing duplicate preferences
         if self.curr_processing_idx in self.user_reviews:
             self.reset_state()
             return "You've already told me about that movie!"
 
+        # handle negative sentiment about this movie
         if self.curr_processing_sentiment == -1: 
             self.user_reviews[self.curr_processing_idx] = -1
             response += self.get_response("negative", self.titles[self.curr_processing_idx][0], is_fifth = len(self.user_reviews) >= 5)
             self.reset_state()
             return response
-                
+
+        # handle positive sentiment about this movie    
         elif self.curr_processing_sentiment == 1: 
             self.user_reviews[self.curr_processing_idx] = 1
             response += self.get_response("positive", self.titles[self.curr_processing_idx][0], is_fifth = len(self.user_reviews) >= 5)
@@ -385,25 +400,33 @@ class Chatbot:
             - Our solution only takes about 7 lines. If you're using much more than that try to think 
               of a more concise approach 
         """
+        # store set of movie indices
         res = set()
 
+        # we will use regex to see if the user's provided title matches titles in our dataset
         pattern = title
 
+        # add year to our regex pattern if the user did not include one
         if Chatbot.get_year_from_title(title) is None:
             pattern += r'.* \(\d{4}\)$'    
         else: 
             pattern = re.escape(pattern)
 
+        # compile the regex object for efficiency
         pattern_obj = re.compile(pattern, flags=re.IGNORECASE)
 
+        # check if the user's provided title matches any in our dataset
         for (idx, (candidate, _)) in enumerate(self.titles):
             if pattern_obj.search(candidate) is not None:
                 res.add(idx)
         
+        # (Extension #1) check if the user's provided title matches any in our
+        # processed dataset that accounts for articles in the title
         for (idx, candidate) in self.titles_articles_handled:
             if pattern_obj.search(candidate) is not None:
                 res.add(idx)
 
+        # convert set to list and return
         return list(res)
 
 
@@ -458,9 +481,12 @@ class Chatbot:
             - You might find one or more of the following helpful: 
               re.search, re.findall, re.match, re.escape, re.compile
         """
-        
+        # get list of possible titles
         candidate_titles = [(self.titles[idx][0], idx) for idx in candidates]
+
+        # see if the clarification matches any of our candidates using regex
         filtered_candidates = [idx for title, idx in candidate_titles if re.search(re.escape(clarification), title, flags=re.IGNORECASE) is not None]
+
         return filtered_candidates
 
     ############################################################################
@@ -495,8 +521,10 @@ class Chatbot:
             - Take a look at self.sentiment (e.g. in scratch.ipynb)
             - Remember we want the count of *tokens* not *types*
         """
+        # conver to lowercase
         user_input = user_input.lower()
 
+        # tokenize
         tokens = nltk.regexp_tokenize(user_input, r"\w+")
 
         sentiments = Counter([self.sentiment[token] for token in tokens if token in self.sentiment])
@@ -539,8 +567,6 @@ class Chatbot:
     
         logistic_regression_classifier = sklearn.linear_model.LogisticRegression(penalty=None,  max_iter=500)
         logistic_regression_classifier.fit(X, Y, )
-
-        # print("Model acc: ", logistic_regression_classifier.score(X, Y))
 
         self.model = logistic_regression_classifier #variable name that will eventually be the sklearn Logistic Regression classifier you train 
         self.count_vectorizer = vectorizer #variable name will eventually be the CountVectorizer from sklearn 
@@ -662,9 +688,12 @@ class Chatbot:
         # articles we would support if we had more time.
         # pattern = r"(.*), (A|An|Un|The|Der|L'|Une|Les|Los|Il|Las|Det|Le|Das|El|De|En|Lo|Den|La)( \(|\))"
 
+        # pattern for identifying articles placed at the end of the title
         pattern = rf"(.*), ({'|'.join(self.articles)}) (\(.*)"
         pattern_obj = re.compile(pattern, flags=re.IGNORECASE)
     
+        # find all the titles that have this article pattern, move the article to the start
+        # of the title, and store these processed titles in res along with the movie index
         res = []
         for idx, movie in enumerate(self.titles):
             title = movie[0]
@@ -721,7 +750,10 @@ class Chatbot:
 
     def function3(): 
         """
-        Any additional functions beyond two count towards extra credit  
+        In addition to the two above functions, we had our bot return responses to a user's 
+        preferences using a randomized set of possible dialogue options. The logic for this is
+        in the "get_response" method at the top of the class, which uses other class instance
+        variables containing a list of templated responses.
         """
         pass 
 

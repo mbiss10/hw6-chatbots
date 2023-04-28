@@ -115,11 +115,13 @@ Throughout history, with each innovation has come the concern of a loss of jobs.
 technologies that they are based upon, are no different. There are two outlooks on this perspective. On the 
 one hand, if these systems are taking jobs they would likely also open up different opportunities. However,
 if these new jobs are not created, we have a couple of options for elected officials to consider. One, government
-sponsoreed retraining programs would help retrain employees who were displaced by these systems. This would help
+sponsored retraining programs could help retrain employees who were displaced by these systems. This would help
 mitigate the impact of dialog systems on workers who could be replaced by them. Additionally, if AI truly 
 increases productivity expontentially, there should be plenty of resources to go around for everyone, which 
-would allow for the creation of universal basic income. 
-
+would allow for the creation of universal basic income. In any case, the most important thing that all stakeholders
+can do is to be educated about how these systems work (even just at a basic level) so that they can participate
+in informed discussions, elections, and debates about how society should deal with these issues, since most
+of these challenges should be handled in a democratic way using from feedback from all stakeholders.
 
 """
 
@@ -137,10 +139,14 @@ Overall, this was an interesting project and a chance for us to solve a simplifi
 The advantages of this paradigm seem to be few compared to the disadvantages; however, there are 
 still some. For one, in the grand scheme of things, this was relatively easy to implement (as 
 compared to something like ChatGPT). Additionally, it is pretty interpretable and easy enough
-to understand why each interaction happens. For the disadvantages, we spend all of this time
-building our chatbot and it still can only work for movie reccomendations. This also required
-labelled datasets, which are time consuming to create anc durate. Additionally, with all
-of this work, very little can be ported over to a new domain. Finally, the performance here 
-is not as generalizable and and the implementation leads to a brittle dialog system.
+to understand why each interaction happens. For the disadvantages, we spent all of this time
+building our chatbot and it still can only work for movie reccomendations (i.e. it is a closed-domain
+system). This also required the use of labeled datasets, which are time consuming to create and curate.
+GPT-3, on the other hand, was able to be trained using self-supervision on web-scale textual data. 
+Additionally, with all of this work, very little can be ported over to a new domain (e.g. a chatbot
+for making restaurant reservations) meaning the system lacks generalizability compared to some
+end-to-end deep learning systems like ChatGPT. Relatedly, our system is generally more brittle 
+than a ChatGPT-like chatbot since it is limited in the types of interactions it knows how to have 
+and the state it can store.
 
 """
